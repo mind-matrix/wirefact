@@ -14,8 +14,8 @@ export interface IUserDocument extends Document {
     username: string
     name: string
     email: string
-    gravatar: string
     phone?: string
+    gravatar: string
     password: string
     badges: IBadgeDocument[]
     role: UserRole
@@ -54,12 +54,10 @@ export const UserSchema = new Schema<IUserDocument>({
             message: (props: any) => `${props.value} is not a valid email address`
         }
     },
-    gravatar: {
-        type: String
-    },
     phone: {
         type: String,
-        unique: true
+        unique: true,
+        sparse: true
     },
     password: {
         type: String,
@@ -94,9 +92,12 @@ UserSchema.pre("save", function () {
         let salt = bcryptjs.genSaltSync(10)
         this.password = bcryptjs.hashSync(this.password, salt)
     }
-    if (this.isNew || this.isModified("email")) {
-        this.gravatar = gravatar.url(this.email)
-    }
 })
+
+UserSchema.virtual("gravatar").get(function (this: IUserDocument) {
+    return gravatar.url(this.email)
+})
+
+UserSchema.index({ name: "text", email: "text", username: "text" })
 
 export const UserModel = model<IUserDocument>("User", UserSchema)

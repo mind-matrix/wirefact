@@ -11,12 +11,22 @@ import { MemberController } from "./member.controller"
 import { convert } from "html-to-text"
 import uniqid from "uniqid"
 import { MediaService } from "../service/media.service"
-import { schema } from "prosemirror-schema-basic"
-import { Node } from "prosemirror-model"
 
-function extractText(content: object) {
-    let root = Node.fromJSON(schema, content)
-    return root.textContent
+function _extractText(content: any): string {
+    if (!content || !Array.isArray(content)) return ""
+    let text = []
+    for (let item of content) {
+        if (item.type === "text" && item.text) {
+            text.push(item.text)
+        } else if (item.content) {
+            text.push(_extractText(item.content))
+        }
+    }
+    return text.join(" ")
+}
+
+function extractText(doc: any) {
+    return _extractText(doc.content)
 }
 
 export const ModeratorController = _.merge(
@@ -69,17 +79,17 @@ export const ModeratorController = _.merge(
         },
         comment: {
             async delete(req, res, next) {
-                if (req.context && req.context.username) {
+                if (req.context && req.context.username && req.context.role >= UserRole.MODERATOR) {
                     let { commentId } = req.params
                     if (commentId) {
                         let comment = await CommentService.findOne({ _id: commentId })
                         if (comment) {
-                            if (req.context.role >= UserRole.MODERATOR) {
-                                comment = await CommentService.updateOne({ _id: commentId }, { content: {}, censored: true })
-                                res.status(200).send({ comment })
+                            if (comment.author.username === req.context.username) {
+                                comment = await CommentService.deleteOne({ _id: commentId })
                             } else {
-                                await MemberController.comment.delete(req, res, next)
+                                comment = await CommentService.updateOne({ _id: commentId }, { content: {}, censored: true })
                             }
+                            res.status(200).send({ comment })
                         } else {
                             res.status(404).send()
                         }
@@ -87,7 +97,7 @@ export const ModeratorController = _.merge(
                         res.status(400).send()
                     }
                 } else {
-                    res.status(401).send()
+                    await MemberController.comment.delete(req, res, next)
                 }
             }
         },
@@ -124,5 +134,17 @@ export const ModeratorController = _.merge(
                     res.status(401).send()
                 }
             }
-        }
+        },
+        profiles: {
+            async get(req, res, next) {
+                if (req.context && req.context.username && req.context.role >= UserRole.MODERATOR) {
+                    let { q } = req.query
+                    let query = <string>q || ""
+                    let users = await UserService.find({ $text: { $search: query } })
+                    res.status(200).send({ users })
+                } else {
+                    res.status(401).send()
+                }
+            }
+        },
     } as IController as { [k: string]: { [k: string]: RequestHandler } })

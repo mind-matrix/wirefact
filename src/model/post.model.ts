@@ -63,8 +63,10 @@ export const PostSchema = new Schema<IPostDocument>({
     },
     slug: {
         type: String,
+        unique: true,
+        index: true,
         default: function (this: IPostDocument) {
-            return slugify(this.title)
+            return slugify(this.title, { lower: true })
         }
     },
     excerpt: {

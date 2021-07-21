@@ -2,6 +2,7 @@ import { BloomFilter } from "bloomfilter";
 import _ from "lodash";
 import { FilterQuery, QueryOptions, UpdateQuery } from "mongoose";
 import { IPostDocument, PostModel } from "../model/post.model";
+import { CommentService } from "./comment.service";
 import { IMedia, MediaService } from "./media.service";
 import { IUser, UserService } from "./user.service";
 
@@ -32,6 +33,9 @@ export interface IPost {
             }
         }
     }
+    comments: number
+    createdAt: Date
+    updatedAt: Date
 }
 
 export class PostService {
@@ -40,13 +44,25 @@ export class PostService {
     static async sanitize(post: IPostDocument[]): Promise<IPost[]>
     static async sanitize(post: null): Promise<null>
     static async sanitize(post: IPostDocument | IPostDocument[] | null): Promise<IPost | IPost[] | null> {
-        const fields = ["id","cover","title","author","slug","excerpt","content","topics","hashtags","contributors","sources","narration","draft","metrics.views.verified.count","metrics.views.unverified.count","createdAt","updatedAt"]
-        const mediaFields = ["id","key","filename","filetype","filesize","metadata"]
+        const fields = ["id", "cover", "title", "author", "slug", "excerpt", "content", "topics", "hashtags", "contributors", "sources", "narration", "draft", "metrics.views.verified.count", "metrics.views.unverified.count", "createdAt", "updatedAt"]
+        const mediaFields = ["id", "key", "filename", "filetype", "filesize", "metadata"]
         if (!post) return null
         if (Array.isArray(post)) return <IPost[]><unknown>Promise.all(post.map(async p => {
-            return { ..._.pick(p.toJSON({ virtuals: true }), fields), cover: _.pick(await MediaService.sanitize(p.cover), mediaFields), author: await UserService.sanitize(p.author), contributors: await UserService.sanitize(p.contributors) }
+            return {
+                ..._.pick(p.toJSON({ virtuals: true }), fields),
+                cover: _.pick(await MediaService.sanitize(p.cover), mediaFields),
+                author: await UserService.sanitize(p.author),
+                contributors: await UserService.sanitize(p.contributors),
+                comments: await CommentService.stats({ postId: p.id })
+            }
         }))
-        return <IPost><unknown>{ ..._.pick(post.toJSON({ virtuals: true }), fields), cover: _.pick(await MediaService.sanitize(post.cover), mediaFields), author: await UserService.sanitize(post.author), contributors: await UserService.sanitize(post.contributors) }
+        return <IPost><unknown>{
+            ..._.pick(post.toJSON({ virtuals: true }), fields),
+            cover: _.pick(await MediaService.sanitize(post.cover), mediaFields),
+            author: await UserService.sanitize(post.author),
+            contributors: await UserService.sanitize(post.contributors),
+            comments: await CommentService.stats({ postId: post.id })
+        }
     }
 
     static async create(data: any) {
@@ -72,6 +88,11 @@ export class PostService {
     static async count(filters: FilterQuery<IPostDocument> = {}) {
         let count = await PostModel.count(filters)
         return count
+    }
+
+    static async exists(filters: FilterQuery<IPostDocument> = {}) {
+        let exists = await PostModel.exists(filters)
+        return exists
     }
 
     static async updateOne(filters: FilterQuery<IPostDocument> = {}, updates: UpdateQuery<IPostDocument>) {
@@ -106,6 +127,6 @@ export class PostService {
             }
         }
         await post.save()
-        return <{ verified:{ count: number }, unverified:{ count: number } }>_.pick(post.metrics.views, ["verified.count","unverified.count"])
+        return <{ verified: { count: number }, unverified: { count: number } }>_.pick(post.metrics.views, ["verified.count", "unverified.count"])
     }
 }

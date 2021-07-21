@@ -8,9 +8,11 @@ import { InvitationService } from "../service/invitation.service";
 import { MailService } from "../service/mail.service";
 import { MediaService } from "../service/media.service";
 import { PostService } from "../service/post.service";
+import { TwitterService } from "../service/twitter.service";
 import { UserService } from "../service/user.service";
 import { Statics } from "../service/_static.service";
 import { IController } from "./icontroller";
+import { prepareTextForTweet } from "./member.controller";
 import { ModeratorController } from "./moderator.controller";
 
 export const AdminController = _.merge(
@@ -42,7 +44,7 @@ export const AdminController = _.merge(
             if (req.context && req.context.username && req.context.role >= UserRole.ADMIN) {
                 let data = req.body
                 let invitation = await InvitationService.create(data)
-                MailService.sendTemplated(invitation.email, "invitation", { name: invitation.name, invitationId: invitation.code })
+                await MailService.sendTemplated(invitation.email, "invitation", { name: invitation.name, invitationId: invitation.code })
                 res.status(200).send({ invitation })
             } else {
                 res.status(401).send()
@@ -66,6 +68,46 @@ export const AdminController = _.merge(
                 res.status(401).send()
             }
         }
+    },
+    post: {
+
+        async post(req, res, next) {
+            if (req.context && req.context.username && req.context.role >= UserRole.ADMIN) {
+                let author = await UserService.findOne({ username: <string>req.context.username })
+                if (author) {
+                    let { skipTweet } = req.query
+                    let data = <any>_.pick(req.body, ["cover","title","slug","excerpt","content","topics","hashtags","sources","draft","author","createdAt"])
+                    if (!data.author) data.author = author.id
+                    let post = await PostService.create(data)
+                    
+                    // Direct Tweet
+                    if (!skipTweet) {
+                        const text = await prepareTextForTweet(post)
+                        const media = Buffer.from(<any>(await MediaService.download(post.cover.key)).Body, <any>post.cover.filetype)
+
+                        TwitterService.tweet({ text, media })
+                    }
+                    
+                    res.status(200).send({ post })
+                } else {
+                    res.status(404).send()
+                }
+            } else {
+                await ModeratorController.post.post(req, res, next)
+            }
+        },
+
+        async put(req, res, next) {
+            if (req.context && req.context.username && req.context.role >= UserRole.ADMIN) {
+                let { postId } = req.params
+                let data = <any>_.pick(req.body, ["cover","title","slug","excerpt","content","topics","hashtags","sources","draft","author","createdAt"])
+                let post = await PostService.updateOne({ _id: postId }, data)
+                if (!post) res.status(404).send()
+                else res.status(200).send({ post })
+            } else {
+                await ModeratorController.post.put(req, res, next)
+            }
+        },
     },
     narration: {
         async delete(req, res, next) {

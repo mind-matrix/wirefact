@@ -39,7 +39,8 @@ export const InvitationSchema = new Schema<IInvitationDocument>({
     },
     phone: {
         type: String,
-        unique: true
+        unique: true,
+        sparse: true
     },
     badges: {
         type: [{

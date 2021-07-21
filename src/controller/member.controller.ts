@@ -1,12 +1,29 @@
 import { RequestHandler } from "express";
 import _ from "lodash";
+import slugify from "slugify";
 import { UserRole } from "../model/user.model";
 import { BadgeService } from "../service/badge.service";
 import { MediaService } from "../service/media.service";
-import { PostService } from "../service/post.service";
+import { IPost, PostService } from "../service/post.service";
+import { TwitterService } from "../service/twitter.service";
+import { UrlShortenerService } from "../service/url.shortener.service";
 import { UserService } from "../service/user.service";
 import { IController } from "./icontroller";
 import { UserController } from "./user.controller";
+import uniqid from "uniqid";
+
+export async function prepareTextForTweet(post: IPost) {
+    let text = `${ post.excerpt?.trim() || `Check out this new post by ${post.author.name}` }`
+    let shortLink = await UrlShortenerService.shorten(`https://wirefact.com/post/${post.id}`)
+    text += `\n${shortLink}\n`
+    
+    if (post.hashtags.length) {
+        for (let hashtag of post.hashtags) {
+            if (text.length + (hashtag.trim().length + 1) < 280) text += ' ' + hashtag.trim()
+        }
+    }
+    return text
+}
 
 export const MemberController = _.merge(
     _.cloneDeep(UserController),
@@ -101,7 +118,16 @@ export const MemberController = _.merge(
                 if (author) {
                     let data = <any>_.pick(req.body, ["cover","title","slug","excerpt","content","topics","hashtags","sources","draft"])
                     data.author = author.id
+                    if (!data.slug) data.slug = slugify(data.title, { lower: true })
+                    if (await PostService.exists({ slug: data.slug })) data.slug = `${data.slug}-${uniqid()}`
                     let post = await PostService.create(data)
+                    
+                    // Direct Tweet
+                    const text = await prepareTextForTweet(post)
+                    const media = Buffer.from(<any>(await MediaService.download(post.cover.key)).Body, <any>post.cover.filetype)
+
+                    TwitterService.tweet({ text, media })
+                    
                     res.status(200).send({ post })
                 } else {
                     res.status(404).send()
@@ -148,6 +174,18 @@ export const MemberController = _.merge(
                 }
             } else {
                 res.status(401).send()
+            }
+        }
+    },
+
+    postExists: {
+        async post(req, res, next) {
+            let data = <any>_.pick(req.body, ["id","slug","title"])
+            if (data.id || data.slug || data.title) {
+                let exists = await PostService.exists(data)
+                res.status(200).send({ exists })
+            } else {
+                res.status(400).send()
             }
         }
     },

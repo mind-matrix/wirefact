@@ -38,6 +38,6 @@ export const MediaSchema = new Schema<IMediaDocument>({
         ref: "User",
         required: true
     }
-})
+}, { timestamps: true })
 
 export const MediaModel = model<IMediaDocument>("Media", MediaSchema)

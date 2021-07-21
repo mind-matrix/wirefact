@@ -189,20 +189,29 @@ export const UserController = {
         async get(req, res, next) {
             let { postId } = req.params
             if (postId) {
-                let post = await PostService.findOne({ _id: postId, draft: false })
+                let post
+                if (postId.match(/^[0-9a-fA-F]{24}$/)) {
+                    post = await PostService.findOne({ $or: [{ _id: postId }, { slug: postId }], draft: false })
+                } else {
+                    post = await PostService.findOne({ slug: postId, draft: false })
+                }
                 if (post) {
                     // register view
                     if (req.context && req.context.username) {
                         let username = <string>req.context.username
-                        let views = await PostService.addView({ _id: postId }, { username })
+                        let views = await PostService.addView({ _id: post.id }, { username })
                         if (views) {
                             post.metrics.views = views
                         }
+                    } else if (req.query.token && req.query.token === process.env.APP_TOKEN) {
+                        // ignore
                     } else {
-                        let ip = <string>(req.headers['client-fingerprint'] || req.headers['x-forwarded-for'] || req.socket.remoteAddress)
-                        let views = await PostService.addView({ _id: postId }, { ip })
-                        if (views) {
-                            post.metrics.views = views
+                        let ip = <string>req.headers['client-fingerprint']
+                        if (ip) {
+                            let views = await PostService.addView({ _id: post.id }, { ip })
+                            if (views) {
+                                post.metrics.views = views
+                            }
                         }
                     }
                     res.status(200).send({ post })
@@ -250,6 +259,9 @@ export const UserController = {
                 } else {
                     res.status(404).send()
                 }
+            } else if (req.query.token && req.query.token === process.env.APP_TOKEN) {
+                let count = await PostService.count({ draft: false })
+                res.status(200).send({ count })
             } else {
                 res.status(400).send()
             }
@@ -267,6 +279,23 @@ export const UserController = {
                 res.status(200).send({ posts })
             } else {
                 res.status(400).send()
+            }
+        }
+    },
+    narrations: {
+        async get(req, res, next) {
+            let filters = req.query as { [k: string]: string }
+            let skip = filters.skip ? parseInt(filters.skip) : 0
+            let limit = filters.limit ? Math.min(15, parseInt(filters.limit)) : 15
+            let projection = filters.content ? null : '-content'
+            if (req.context && req.context.username) {
+                // TODO: registered user (sort & return by post preferences)
+                let posts = await PostService.find({ "narration.male": { $exists: true }, "narration.female": { $exists: true }, draft: false }, { skip, limit, sort: '-createdAt' }, projection)
+                res.status(200).send({ posts })
+            } else {
+                // un-registered user (sort & return by date)
+                let posts = await PostService.find({ "narration.male": { $exists: true }, "narration.female": { $exists: true }, draft: false }, { skip, limit, sort: '-createdAt' }, projection)
+                res.status(200).send({ posts })
             }
         }
     },
@@ -309,6 +338,25 @@ export const UserController = {
                     if (commentId) {
                         let data = <any>_.pick(req.body, ["content","mentions"])
                         let comment = await CommentService.updateOne({ _id: commentId, author: <any>user.id }, data)
+                        if (!comment) res.status(404).send()
+                        else res.status(200).send({ comment })
+                    } else {
+                        res.status(400).send()
+                    }
+                } else {
+                    res.status(404).send()
+                }
+            } else {
+                res.status(401).send()
+            }
+        },
+        async delete(req, res, next) {
+            if (req.context && req.context.username) {
+                let user = await UserService.findOne({ username: <string>req.context.username })
+                if (user) {
+                    let { commentId } = req.params
+                    if (commentId) {
+                        let comment = await CommentService.deleteOne({ _id: commentId, author: <any>user.id })
                         if (!comment) res.status(404).send()
                         else res.status(200).send({ comment })
                     } else {

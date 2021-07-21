@@ -15,7 +15,7 @@ export interface IMedia {
     key: string
     filesize: number
     filename: string
-    mimetype: string
+    filetype: string
     encoding: string
     metadata?: object
     owner: IUser
@@ -56,6 +56,14 @@ export class MediaService {
             Body: body,
             ContentType: contentType,
             ACL: isPublic ? "public-read" : undefined
+        }).promise()
+    }
+
+    static async download(key: string) {
+        const s3 = new AWS.S3()
+        return await s3.getObject({
+            Bucket: process.env.AWS_S3_BUCKET!,
+            Key: key
         }).promise()
     }
 

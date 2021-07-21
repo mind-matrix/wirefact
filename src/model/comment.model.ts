@@ -1,5 +1,24 @@
-import { Document, Schema, model } from "mongoose";
-import { IUserDocument } from "./user.model";
+import { Document, Schema, model } from "mongoose"
+import { IUserDocument } from "./user.model"
+// @ts-ignore
+import sentiment from "wink-sentiment"
+
+function _extractText(content: any): string {
+    if (!content || !Array.isArray(content)) return ""
+    let text = []
+    for (let item of content) {
+        if (item.type === "text" && item.text) {
+            text.push(item.text)
+        } else if (item.content) {
+            text.push(_extractText(item.content))
+        }
+    }
+    return text.join(" ")
+}
+
+function extractText(doc: any) {
+    return _extractText(doc.content)
+}
 
 export interface ICommentDocument extends Document {
     author: IUserDocument
@@ -36,6 +55,14 @@ export const CommentSchema = new Schema<ICommentDocument>({
     sentiment: {
         type: Number,
         default: 0
+    }
+}, { timestamps: true })
+
+CommentSchema.pre("save", function () {
+    if (this.isNew || this.isModified("content")) {
+        let text = extractText(this.content)
+        let data = sentiment(text)
+        this.sentiment = data.normalizedScore
     }
 })
 

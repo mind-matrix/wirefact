@@ -28,11 +28,15 @@ app.get("/posts/count", Controller.auth.all, Controller.countPosts.get)
 
 app.get("/posts/search", Controller.auth.all, Controller.searchPosts.get)
 
+app.get("/narrations", Controller.auth.all, Controller.narrations.get)
+
 app.get("/post/:postId", Controller.auth.all, Controller.post.get)
+app.post("/post-exists", Controller.auth.all, Controller.postExists.post)
 
 app.get("/comment", Controller.auth.all, Controller.comment.get) // ?id=xyz&postId=pqr
 app.post("/comment", Controller.auth.all, Controller.comment.post)
-app.put("/comment", Controller.auth.all, Controller.comment.put)
+app.put("/comment/:commentId", Controller.auth.all, Controller.comment.put)
+app.delete("/comment/:commentId", Controller.auth.all, Controller.comment.delete)
 
 app.get("/media/:mediaId", Controller.media.get)
 
@@ -74,6 +78,8 @@ app.get("/badges", Controller.auth.all, Controller.badges.get)
 // MODERATOR EXTENSION
 app.post("/assign-badge", Controller.auth.all, Controller.assignBadge.post)
 app.get("/narration/:postId", Controller.auth.all, Controller.narration.get)
+
+app.get("/profiles", Controller.auth.all, Controller.profiles.get)
 
 // ADMIN EXTENSION
 app.post("/badge", Controller.badge.post)
